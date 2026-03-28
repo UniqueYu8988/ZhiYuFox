@@ -1,0 +1,72 @@
+{
+  "name": "zhiyuli-desktop",
+  "version": "0.2.0",
+  "private": true,
+  "description": "知语狸桌面客户端",
+  "author": "Yu",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build:web": "tsc && vite build",
+    "build": "npm run build:web && electron-builder",
+    "build:mirror": "npm run build:web && set \"ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/\" && set \"ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/\" && electron-builder",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "framer-motion": "^12.23.12",
+    "lucide-react": "^0.542.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.0",
+    "electron": "^40.0.0",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  },
+  "build": {
+    "appId": "com.yu.zhiyuli",
+    "productName": "知语狸",
+    "directories": {
+      "output": "release"
+    },
+    "extraResources": [
+      {
+        "from": "../src",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../assets/app_icon.ico",
+        "to": "assets/app_icon.ico"
+      }
+    ],
+    "files": [
+      "dist",
+      "dist-electron",
+      "!node_modules/.cache"
+    ],
+    "win": {
+      "icon": "../assets/app_icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "asar": true,
+    "compression": "maximum"
+  }
+}

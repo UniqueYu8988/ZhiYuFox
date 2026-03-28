@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build artifacts
+build/
+dist/
+*.spec.bak
+
+# Local runtime data
+output/
+.biliarchive.local.json
+.biliarchive.window.json
+.zhiyuli-runtime.log
+local_env.bat
+
+# Tooling
+.agent/
+
+# IDE
+.vscode/
+.idea/
+
+# Desktop build artifacts
+desktop/node_modules/
+desktop/dist/
+desktop/dist-electron/
+desktop/release/
