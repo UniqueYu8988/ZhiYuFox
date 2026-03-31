@@ -568,6 +568,13 @@ input {
   padding-bottom: 15px;
 }
 
+.result-card.warning {
+  background:
+    linear-gradient(180deg, rgba(255, 208, 114, 0.06), rgba(255, 255, 255, 0.018)),
+    rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 208, 114, 0.12);
+}
+
 .result-label {
   color: var(--text-dim);
   font-size: 0.68rem;
@@ -785,6 +792,24 @@ input {
   color: rgba(221, 217, 234, 0.78);
 }
 
+.help-link-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: rgba(221, 217, 234, 0.78);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.help-link-button:hover {
+  color: rgba(232, 228, 242, 0.92);
+  text-decoration: underline;
+}
+
 .settings-modal .field span {
   color: rgba(221, 217, 234, 0.52);
 }
@@ -797,8 +822,36 @@ input {
   gap: 10px;
 }
 
+.modal-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .modal-head {
   margin-bottom: 10px;
+}
+
+.ghost-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(221, 217, 234, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.68rem;
+}
+
+.ghost-pill:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(232, 228, 242, 0.9);
+}
+
+.star-lit {
+  color: #ffd76a;
+  filter: drop-shadow(0 0 8px rgba(255, 215, 106, 0.28));
 }
 
 .inline-field {

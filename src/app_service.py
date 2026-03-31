@@ -29,7 +29,13 @@ class SaveResult:
     publish_date: str
     output_dir: str
     markdown_path: str
+    file_generated: bool
     summary: str
+    has_subtitles: bool
+    subtitle_group_count: int
+    subtitle_entry_count: int
+    ai_skipped_reason: str
+    result_note: str
     subtitle_source_type: str
     subtitle_source_api: str
     subtitle_note: str
@@ -49,6 +55,13 @@ def _resolve_login_status() -> tuple[bool, str]:
         ok, message = bilibili_api.validate_sessdata(sessdata)
         return ok, message
     return True, "当前按未登录方式运行。"
+
+
+def _count_subtitle_entries(subtitles: list[dict]) -> tuple[int, bool]:
+    entry_count = 0
+    for subtitle in subtitles:
+        entry_count += len(subtitle.get("entries") or [])
+    return entry_count, entry_count > 0
 
 
 def save_bilibili_video(
@@ -83,21 +96,56 @@ def save_bilibili_video(
         subtitle_source_type = "已获取字幕" if subtitles else "未获取到字幕"
         subtitle_source_api = "get_subtitles"
         subtitle_note = "当前版本未提供更详细的字幕来源说明。"
+
+    subtitle_entry_count, has_subtitles = _count_subtitle_entries(subtitles)
     _emit(progress_callback, f"字幕获取完成，共 {len(subtitles)} 组", 35)
     _emit(progress_callback, f"字幕来源：{subtitle_source_type}（{subtitle_source_api}）。{subtitle_note}", 42)
 
     summary = ""
+    ai_skipped_reason = ""
+    result_note = ""
     if options.generate_summary and minimax_client.has_api_key():
-        _emit(progress_callback, "正在生成 AI 视频总结...", 60)
-        summary = minimax_client.generate_summary(
-            {
-                "video_info": video_info,
-                "subtitles": subtitles,
-            }
-        )
-        _emit(progress_callback, "AI 视频总结生成完成", 82)
+        if has_subtitles:
+            _emit(progress_callback, "正在生成 AI 视频总结...", 60)
+            summary = minimax_client.generate_summary(
+                {
+                    "video_info": video_info,
+                    "subtitles": subtitles,
+                }
+            )
+            _emit(progress_callback, "AI 视频总结生成完成", 82)
+        else:
+            ai_skipped_reason = "未检测到可用字幕，已跳过 AI 视频总结。"
+            _emit(progress_callback, ai_skipped_reason, 82)
     elif options.generate_summary:
-        _emit(progress_callback, "未检测到 MiniMax API Key，跳过 AI 视频总结", 82)
+        ai_skipped_reason = "未检测到 MiniMax API Key，跳过 AI 视频总结。"
+        _emit(progress_callback, ai_skipped_reason, 82)
+
+    output_dir = config.get_output_dir()
+    os.makedirs(output_dir, exist_ok=True)
+    publish_date = time.strftime("%Y-%m-%d", time.localtime(video_info["pubdate"]))
+    markdown_path = ""
+
+    if not has_subtitles:
+        result_note = "未检测到可用字幕，未生成 Markdown 文件。"
+        _emit(progress_callback, result_note, 100)
+        return SaveResult(
+            bvid=bvid,
+            video_title=video_info["title"],
+            publish_date=publish_date,
+            output_dir=output_dir,
+            markdown_path=markdown_path,
+            file_generated=False,
+            summary=summary,
+            has_subtitles=has_subtitles,
+            subtitle_group_count=len(subtitles),
+            subtitle_entry_count=subtitle_entry_count,
+            ai_skipped_reason=ai_skipped_reason,
+            result_note=result_note,
+            subtitle_source_type=subtitle_source_type,
+            subtitle_source_api=subtitle_source_api,
+            subtitle_note=subtitle_note,
+        )
 
     full_data = {
         "video_info": video_info,
@@ -108,6 +156,11 @@ def save_bilibili_video(
             "bvid": bvid,
             "login_ok": login_ok,
             "login_message": login_message,
+            "has_subtitles": has_subtitles,
+            "subtitle_group_count": len(subtitles),
+            "subtitle_entry_count": subtitle_entry_count,
+            "ai_skipped_reason": ai_skipped_reason,
+            "result_note": result_note,
             "subtitle_source_type": subtitle_source_type,
             "subtitle_source_api": subtitle_source_api,
             "subtitle_note": subtitle_note,
@@ -115,11 +168,7 @@ def save_bilibili_video(
     }
 
     safe_title = config.sanitize_filename(video_info["title"])
-    output_dir = config.get_output_dir()
-    os.makedirs(output_dir, exist_ok=True)
-
     markdown_path = os.path.join(output_dir, f"{safe_title}_{bvid}.md")
-    publish_date = time.strftime("%Y-%m-%d", time.localtime(video_info["pubdate"]))
 
     _emit(progress_callback, f"正在导出 Markdown 到：{output_dir}", 90)
     exporter.export_markdown(full_data, markdown_path)
@@ -132,7 +181,13 @@ def save_bilibili_video(
         publish_date=publish_date,
         output_dir=output_dir,
         markdown_path=markdown_path,
+        file_generated=True,
         summary=summary,
+        has_subtitles=has_subtitles,
+        subtitle_group_count=len(subtitles),
+        subtitle_entry_count=subtitle_entry_count,
+        ai_skipped_reason=ai_skipped_reason,
+        result_note=result_note,
         subtitle_source_type=subtitle_source_type,
         subtitle_source_api=subtitle_source_api,
         subtitle_note=subtitle_note,

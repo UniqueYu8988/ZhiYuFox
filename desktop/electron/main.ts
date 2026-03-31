@@ -77,6 +77,12 @@ type RunResult = {
   publishDate: string
   outputDir: string
   markdownPath: string
+  fileGenerated: boolean
+  hasSubtitles: boolean
+  subtitleGroupCount: number
+  subtitleEntryCount: number
+  aiSkippedReason: string
+  resultNote: string
 }
 
 type SettingsStatus = {

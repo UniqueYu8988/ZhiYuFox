@@ -170,8 +170,15 @@ function HelpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-head">
-              <div>
+              <div className="modal-title-row">
                 <h2>使用说明</h2>
+                <button
+                  className="ghost-pill"
+                  onClick={() => void window.desktopAPI.openExternal('https://github.com/UniqueYu8988/ZhiYuFox')}
+                >
+                  <Star size={13} className="star-lit" fill="currentColor" />
+                  GitHub 项目地址
+                </button>
               </div>
               <button className="icon-button" onClick={onClose}>
                 <X size={18} />
@@ -183,28 +190,41 @@ function HelpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
               <p>1. 先在浏览器登录 Bilibili。</p>
               <p>2. 打开任意 Bilibili 页面，按 F12 进入开发者工具。</p>
               <p>3. 在 Application 或 存储 页面找到 Cookies。</p>
-              <p>4. 选择 `https://www.bilibili.com`，复制名为 `SESSDATA` 的值。</p>
+              <p>4. 选择 https://www.bilibili.com 复制名为 `SESSDATA` 的值</p>
               <p>5. 回到知语狸，粘贴到设置中的 `SESSDATA` 字段即可。</p>
             </div>
 
             <div className="help-block">
               <h3>MiniMax API Key 获取</h3>
-              <p>1. 登录 MiniMax 开放平台后，在“接口密钥”里创建新的 API Key。</p>
-              <p>2. 如需购买额度或开通套餐，可前往官方定价页。</p>
-              <p className="help-link">开放平台：https://platform.minimaxi.com/docs/guides/quickstart</p>
-              <p className="help-link">定价页面：https://www.minimaxi.com/pricing</p>
+              <p>1. 登录 MiniMax 开放平台，先完成账户注册。</p>
+              <p>2. 在“接口密钥”里创建新的 Key。</p>
+              <p>• API Key：按次付费 丨 Token Plan Key：包月套餐</p>
+              <p>• 推荐 Starter 连续包月套餐 ￥29（600 次调用 / 5 小时）</p>
+              <p>• 使用我的邀请计划链接可享 9 折优惠。</p>
+              <p>3. 复制 Key 到此程序（注意保管，以免泄露）</p>
             </div>
 
-            <div className="security-note">
-              SESSDATA 和 API Key 只会保存在本地 `.biliarchive.local.json`，不会写入源码。
+            <div className="help-block">
+              <h3>免责声明</h3>
+              <p>1. 生成的文件保存在本地，不会上传到云端。</p>
+              <p>2. 产品技术基于字幕读取，适用于大多数视频。</p>
+              <p>3. 产品为非盈利项目，短期体验作者可提供 API Key。</p>
             </div>
 
             <button
               className="secondary-button help-action"
-              onClick={() => void window.desktopAPI.openExternal('https://github.com/UniqueYu8988')}
+              onClick={() => void window.desktopAPI.openExternal('https://platform.minimaxi.com/docs/guides/quickstart')}
             >
-              <Star size={14} />
-              去 GitHub 主页支持一下
+              <Star size={14} className="star-lit" fill="currentColor" />
+              MiniMax 开放平台
+            </button>
+
+            <button
+              className="secondary-button help-action"
+              onClick={() => void window.desktopAPI.openExternal('https://platform.minimaxi.com/subscribe/token-plan?code=BFyAjCS9Oq&source=link')}
+            >
+              <Star size={14} className="star-lit" fill="currentColor" />
+              前往邀请计划链接
             </button>
           </motion.div>
         </motion.div>
@@ -265,7 +285,7 @@ function App() {
         generateAi: true,
       })
       setResult(response)
-      setStatus('处理完成，Markdown 已生成。')
+      setStatus(response.fileGenerated ? '处理完成，Markdown 已生成。' : (response.resultNote || '未生成文件'))
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '处理失败')
     } finally {
@@ -375,20 +395,38 @@ function App() {
                       <strong>{result.publishDate}</strong>
                     </div>
                     <div className="result-card">
-                      <span className="result-label">文件</span>
-                      <strong className="path-text">{result.markdownPath}</strong>
+                      <span className="result-label">字幕状态</span>
+                      <strong>
+                        {result.hasSubtitles
+                          ? `已获取 ${result.subtitleGroupCount} 组字幕，共 ${result.subtitleEntryCount} 条`
+                          : (result.aiSkippedReason || '未检测到可用字幕，已跳过 AI 视频总结。')}
+                      </strong>
                     </div>
+                    {!result.fileGenerated && (
+                      <div className="result-card warning">
+                        <span className="result-label">结果提示</span>
+                        <strong>{result.resultNote || '未检测到可用字幕，未生成 Markdown 文件。'}</strong>
+                      </div>
+                    )}
+                    {result.fileGenerated && (
+                      <div className="result-card">
+                        <span className="result-label">文件</span>
+                        <strong className="path-text">{result.markdownPath}</strong>
+                      </div>
+                    )}
                   </div>
-                  <div className="result-actions">
-                    <button className="secondary-button" onClick={() => void window.desktopAPI.showItem(result.markdownPath)}>
-                      <ScanSearch size={14} />
-                      显示文件
-                    </button>
-                    <button className="secondary-button" onClick={() => void window.desktopAPI.openPath(result.outputDir)}>
-                      <FolderOpen size={14} />
-                      打开目录
-                    </button>
-                  </div>
+                  {result.fileGenerated && (
+                    <div className="result-actions">
+                      <button className="secondary-button" onClick={() => void window.desktopAPI.showItem(result.markdownPath)}>
+                        <ScanSearch size={14} />
+                        显示文件
+                      </button>
+                      <button className="secondary-button" onClick={() => void window.desktopAPI.openPath(result.outputDir)}>
+                        <FolderOpen size={14} />
+                        打开目录
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               ) : (
                 <div className="empty-state compact" />

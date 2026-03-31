@@ -67,6 +67,12 @@ def main() -> int:
                     "publishDate": result.publish_date,
                     "outputDir": result.output_dir,
                     "markdownPath": result.markdown_path,
+                    "fileGenerated": result.file_generated,
+                    "hasSubtitles": result.has_subtitles,
+                    "subtitleGroupCount": result.subtitle_group_count,
+                    "subtitleEntryCount": result.subtitle_entry_count,
+                    "aiSkippedReason": result.ai_skipped_reason,
+                    "resultNote": result.result_note,
                 },
                 ensure_ascii=False,
             )
