@@ -207,7 +207,7 @@ function HelpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
             <div className="help-block">
               <h3>免责声明</h3>
               <p>1. 生成的文件保存在本地，不会上传到云端。</p>
-              <p>2. 产品技术基于字幕读取，适用于大多数视频。</p>
+              <p>2. 产品基于字幕读取，仅适用于存在字幕/AI字幕的视频。</p>
               <p>3. 产品为非盈利项目，短期体验作者可提供 API Key。</p>
             </div>
 
@@ -398,10 +398,18 @@ function App() {
                       <span className="result-label">字幕状态</span>
                       <strong>
                         {result.hasSubtitles
-                          ? `已获取 ${result.subtitleGroupCount} 组字幕，共 ${result.subtitleEntryCount} 条`
+                          ? (result.pageCount > 1
+                            ? `已获取 ${result.pagesWithSubtitles}/${result.pageCount} 个分P的字幕，共 ${result.subtitleEntryCount} 条`
+                            : `已获取 ${result.subtitleGroupCount} 组字幕，共 ${result.subtitleEntryCount} 条`)
                           : (result.aiSkippedReason || '未检测到可用字幕，已跳过 AI 视频总结。')}
                       </strong>
                     </div>
+                    {result.missingSubtitlePages.length > 0 && (
+                      <div className="result-card warning">
+                        <span className="result-label">未参与总结的分P</span>
+                        <strong className="path-text">{result.missingSubtitlePages.join('；')}</strong>
+                      </div>
+                    )}
                     {!result.fileGenerated && (
                       <div className="result-card warning">
                         <span className="result-label">结果提示</span>

@@ -59,6 +59,8 @@ AD_BRANDS = (
     "拼多多",
 )
 
+MAX_SUBTITLE_TRACKS = 2
+
 
 def has_api_key() -> bool:
     return bool(config.MINIMAX_API_KEY.strip())
@@ -104,12 +106,6 @@ def validate_api_key(api_key: str, model: str) -> tuple[bool, str]:
         return False, f"MiniMax 检测失败：{exc}"
 
 
-def _clip(text: str, max_len: int) -> str:
-    if len(text) <= max_len:
-        return text
-    return text[:max_len] + "\n...[已截断]"
-
-
 def _looks_like_ad_line(text: str) -> bool:
     normalized = (text or "").strip()
     if not normalized:
@@ -151,44 +147,110 @@ def _filter_subtitle_entries(entries: list[dict]) -> list[dict]:
     return filtered
 
 
+def _subtitle_priority(subtitle: dict) -> tuple[int, str]:
+    lang = str(subtitle.get("lang") or "").lower()
+    land = str(subtitle.get("land") or "").lower()
+    joined = f"{lang} {land}"
+
+    if any(keyword in joined for keyword in ("zh", "中文", "汉语", "国语", "简体", "繁體", "繁体")):
+        return (0, joined)
+    if "en" in joined or "english" in joined:
+        return (1, joined)
+    return (2, joined)
+
+
+def _select_subtitle_tracks(subtitles: list[dict]) -> list[dict]:
+    if not subtitles:
+        return []
+
+    ordered = sorted(subtitles, key=_subtitle_priority)
+    best_priority = _subtitle_priority(ordered[0])[0]
+
+    if best_priority == 0:
+        return [ordered[0]]
+
+    return ordered[:MAX_SUBTITLE_TRACKS]
+
+
 def _build_prompt(data: dict) -> str:
     video = data["video_info"]
-    subtitles = data["subtitles"]
+    subtitles = _select_subtitle_tracks(data["subtitles"])
+    pages = video.get("pages") or []
+    has_multi_page = len(pages) > 1
 
     subtitle_chunks: list[str] = []
-    for sub in subtitles[:2]:
-        filtered_entries = _filter_subtitle_entries(sub["entries"])
-        lines = [
-            f"[{entry['from']:.1f}-{entry['to']:.1f}] {entry['content']}"
-            for entry in filtered_entries[:160]
-        ]
+    for sub in subtitles:
+        page_segments = sub.get("page_segments") or []
+        lines: list[str] = []
+        if page_segments:
+            for segment in page_segments:
+                segment_entries = _filter_subtitle_entries(segment.get("entries") or [])
+                if not segment_entries:
+                    continue
+                lines.append(f"【{segment.get('label', '未命名分P')}】")
+                lines.extend(
+                    f"[{entry['from']:.1f}-{entry['to']:.1f}] {entry['content']}"
+                    for entry in segment_entries
+                )
+        else:
+            filtered_entries = _filter_subtitle_entries(sub["entries"])
+            lines = [
+                f"[{entry['from']:.1f}-{entry['to']:.1f}] {entry['content']}"
+                for entry in filtered_entries
+            ]
         subtitle_chunks.append(f"语言: {sub['lang']}\n" + "\n".join(lines))
 
     payload = {
         "title": video["title"],
         "publish_date": time.strftime("%Y-%m-%d", time.localtime(video.get("pubdate", 0))),
+        "category": video.get("tname", ""),
         "desc": video.get("desc", ""),
-        "subtitles_excerpt": _clip("\n\n".join(subtitle_chunks), 14000),
+        "page_count": len(pages) or 1,
+        "page_outline": [
+            {
+                "page": page.get("page"),
+                "part": page.get("part", ""),
+            }
+            for page in pages
+        ],
+        "subtitle_strategy": "优先选择中文字幕；尽量保留完整字幕；明显广告字幕已尽量过滤。",
+        "subtitles_excerpt": "\n\n".join(subtitle_chunks),
     }
 
     return (
-        "请基于以下 Bilibili 视频标题、发布日期、简介和字幕片段，写一段只围绕视频内容本身的中文 Markdown 分析，"
-        "用于整理视频笔记。不要分析评论，不要讨论观众反馈、舆情、热度或互动表现，不要输出代码块。\n\n"
-        "请严格使用以下结构：\n"
-        "## 🧭 视频主题\n"
-        "## 💡 核心内容\n\n"
-        "要求：\n"
-        "1. 只围绕视频本身讲了什么来写，不要写成空泛的摘要模板。\n"
-        "2. “视频主题”要直接说明这个视频主要在讨论什么问题、对象或现象。\n"
-        "3. “核心内容”必须按条列出视频具体讲了哪些内容、论点或展开，每一条都尽量补充它使用了什么论据、案例、类比、场景、数据或例子来支撑这些内容。\n"
-        "4. 如果字幕里出现了具体人物、事件、产品、案例、实验、对比、数字或原话，请尽量保留这些关键信息，而不是把它们抽象化。\n"
-        "5. 如果信息不足，请明确说明是基于有限字幕或简介得出的判断，不要编造细节。\n"
-        "6. “核心内容”部分优先使用有层次的条目式写法，可以使用加粗小标题或编号，让结构更清晰。\n"
-        "7. 不要输出“总结”或任何额外章节，只保留上面两个标题。\n"
-        "8. 明显属于广告、赞助、带货、产品植入、购买引导、功能推荐的内容一律忽略，不要写入“视频主题”或“核心内容”。\n"
-        "9. 如果视频中穿插了品牌推荐、硬广、软广、工具推广或口播赞助，请将其视为与主内容无关的噪音，除非视频主题本身就是在评测该产品。\n"
-        "10. 不要专门说明你忽略了广告，也不要写出“此处为广告”“此处已忽略”等提示语，直接像它不存在一样处理。\n"
-        "11. 语言要具体、朴素、信息密度高，少用空泛评价词，不要拔高，不要重复改写同一个意思。\n\n"
+        "请只基于以下视频标题、发布日期、简介和字幕片段，整理一份中文 Markdown 正文。\n"
+        "当前文档的标题和日期会由程序写入。你需要额外给出 2 个简短 tag，但 tag 不能出现在正文段落里，而是单独放在程序可解析的标记行中。\n"
+        "你绝对不要重复输出标题、日期、front matter、引言、问候语或总结段落。\n\n"
+        "【严格执行规则】\n"
+        "1. 你是一个极度严谨的视频干货提取机，只负责穿透废话，提取视频主体到底讲了什么事实、用了什么论据。\n"
+        "2. 零废话原则：禁止输出“总而言之”“在这个视频中”“视频最后总结道”等包装性废话。\n"
+        "3. 细节至上：禁止抽象化和空泛总结，必须优先保留具体数据、案例、类比、场景、关键数字和有价值的原话。\n"
+        "4. 广告免疫：明显属于广告、赞助、带货、产品植入、购买引导、功能推荐的内容必须静默忽略，绝对不要写“这里忽略了广告”等提示。\n"
+        "5. 不要扩展到评论区、观众反馈、舆情、热度或任何未提供的信息。\n"
+        "6. 如果信息不足，可以明确说“字幕信息有限”或“依据有限字幕判断”，但不要编造细节。\n"
+        "7. 语言风格要客观、冷静、信息密度高，少用形容词，不要重复改写同一个意思。\n"
+        "8. 目标是高密度提炼，不是逐段复述字幕。请优先保留最值得记下来的信息，不要为了完整而把同类内容拆成很多重复要点。\n"
+        "9. 相近观点、重复举例、同一结论的多次铺垫要主动合并，只留下最有解释力的论据、案例、数字或原话。\n"
+        "10. 当视频内容很多时，优先输出最关键、最有信息量的 4-8 条要点；不要因为材料更长就无限增加条目数量。\n"
+        "11. 每条要点尽量遵循“观点在前，证据在后”的写法，先说明结论，再补充支撑它的事实、案例、数据或类比。\n\n"
+        "12. 请根据标题、简介、分区和字幕内容，自行判断它更像评论、教学、新闻、vlog、访谈、评测或其他类型，并据此调整提炼方式；不要被预设模板限制。\n\n"
+        "13. 每个条目尽量以 `- **短导语：**` 开头，短导语控制在 2-8 个字，让阅读时一眼能扫到重点。\n"
+        "14. 如果内容明显是教程、教学、实操演示，优先整理准备条件、关键步骤、核心方法、常见问题、注意事项和作者建议，不要写成泛泛介绍。\n"
+        f"15. {'当前视频是多分P结构。请在同一个文档里保留分P层次，在 `### ✨ 主要内容` 下按 `#### P1 标题`、`#### P2 标题` 这样的子标题分段，再在每个分P下面写 1-3 条带加粗导语的重点。不要把所有分P混成一整串总列表。' if has_multi_page else '当前视频不是多分P结构，`### ✨ 主要内容` 下直接用带加粗导语的条列即可。'}\n\n"
+        "【强制输出结构】\n"
+        "请严格且仅使用以下 Markdown 结构输出：\n"
+        "[TAGS] tag1, tag2\n"
+        "### 💡 视频主题\n"
+        "（用 1-2 句话直接说明这个视频到底在探讨或解决什么问题。）\n\n"
+        "### ✨ 主要内容\n"
+        "（用条列方式整理视频干货。优先输出高密度内容，每一个核心点都必须尽量附带字幕中的事实、例子、数字、类比或原话作为支撑。）\n\n"
+        "tag 要求：\n"
+        "1. 只给 2 个 tag。\n"
+        "2. tag 要简短，尽量是 2-6 个字的主题词或领域词，不要写成长句。\n"
+        "3. 不要带井号，不要写解释，不要超过 2 个。\n"
+        "4. 尽量避免空泛口号词，优先使用能概括主题的稳定名词。\n"
+        "5. 除了开头这一行 [TAGS]，不要在正文其他位置重复 tag。\n\n"
+        "除了这条 [TAGS] 行、两个标题和它们下面的正文，不要输出任何其他章节。\n\n"
         f"原始材料：\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
 
@@ -203,7 +265,7 @@ def generate_summary(data: dict) -> str:
         "messages": [
             {
                 "role": "system",
-                "content": "你是一个擅长提炼视频具体内容的中文助手。你的任务是忽略广告、赞助、带货和产品植入，只讲清视频主体到底说了什么、用了什么例子和论据，而不是写空泛摘要。",
+                "content": "你是一个极度严谨的视频干货提取机。你的唯一任务是穿透所有废话、广告、赞助、带货和产品植入，精准提取视频主体到底讲了什么事实、用了什么论据。你极度讨厌空泛总结和套话，只关心具体数据、案例、类比和原话。",
             },
             {
                 "role": "user",
@@ -221,6 +283,11 @@ def generate_summary(data: dict) -> str:
     payload = resp.json()
     content = payload["choices"][0]["message"]["content"].strip()
     content = re.sub(r"<think>.*?</think>\s*", "", content, flags=re.DOTALL)
-    content = re.sub(r"^##\s*💡\s*核心观点", "## 💡 核心内容", content, flags=re.MULTILINE)
-    content = re.sub(r"^##\s*核心观点", "## 💡 核心内容", content, flags=re.MULTILINE)
+    content = re.sub(r"^##\s*🧭\s*视频主题", "### 💡 视频主题", content, flags=re.MULTILINE)
+    content = re.sub(r"^##\s*💡\s*核心内容", "### ✨ 主要内容", content, flags=re.MULTILINE)
+    content = re.sub(r"^##\s*💡\s*核心观点", "### ✨ 主要内容", content, flags=re.MULTILINE)
+    content = re.sub(r"^##\s*核心观点", "### ✨ 主要内容", content, flags=re.MULTILINE)
+    content = re.sub(r"^##\s*核心内容", "### ✨ 主要内容", content, flags=re.MULTILINE)
+    content = re.sub(r"^###\s*核心内容", "### ✨ 主要内容", content, flags=re.MULTILINE)
+    content = re.sub(r"^###\s*视频主题", "### 💡 视频主题", content, flags=re.MULTILINE)
     return content.strip()

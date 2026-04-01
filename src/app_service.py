@@ -39,6 +39,9 @@ class SaveResult:
     subtitle_source_type: str
     subtitle_source_api: str
     subtitle_note: str
+    page_count: int
+    pages_with_subtitles: int
+    missing_subtitle_pages: list[str]
 
 
 def _emit(progress_callback: ProgressCallback | None, message: str, percent: int) -> None:
@@ -86,20 +89,28 @@ def save_bilibili_video(
         _emit(progress_callback, "当前未使用有效登录，部分字幕接口可能受限。", 24)
 
     if hasattr(bilibili_api, "get_subtitles_bundle"):
-        subtitle_bundle = bilibili_api.get_subtitles_bundle(video_info["aid"], video_info["cid"])
+        subtitle_bundle = bilibili_api.get_subtitles_bundle(video_info)
         subtitles = subtitle_bundle["subtitles"]
         subtitle_source_type = subtitle_bundle["source_type"]
         subtitle_source_api = subtitle_bundle["source_api"]
         subtitle_note = subtitle_bundle["note"]
+        page_count = int(subtitle_bundle.get("page_count") or len(video_info.get("pages") or []) or 1)
+        pages_with_subtitles = int(subtitle_bundle.get("pages_with_subtitles") or 0)
+        missing_subtitle_pages = [item.get("label", "") for item in subtitle_bundle.get("pages_without_subtitles") or [] if item.get("label")]
     else:
         subtitles = bilibili_api.get_subtitles(video_info["aid"], video_info["cid"])
         subtitle_source_type = "已获取字幕" if subtitles else "未获取到字幕"
         subtitle_source_api = "get_subtitles"
         subtitle_note = "当前版本未提供更详细的字幕来源说明。"
+        page_count = 1
+        pages_with_subtitles = 1 if subtitles else 0
+        missing_subtitle_pages = []
 
     subtitle_entry_count, has_subtitles = _count_subtitle_entries(subtitles)
     _emit(progress_callback, f"字幕获取完成，共 {len(subtitles)} 组", 35)
     _emit(progress_callback, f"字幕来源：{subtitle_source_type}（{subtitle_source_api}）。{subtitle_note}", 42)
+    if missing_subtitle_pages:
+        _emit(progress_callback, f"未获取到字幕的分P：{'；'.join(missing_subtitle_pages)}", 46)
 
     summary = ""
     ai_skipped_reason = ""
@@ -145,6 +156,9 @@ def save_bilibili_video(
             subtitle_source_type=subtitle_source_type,
             subtitle_source_api=subtitle_source_api,
             subtitle_note=subtitle_note,
+            page_count=page_count,
+            pages_with_subtitles=pages_with_subtitles,
+            missing_subtitle_pages=missing_subtitle_pages,
         )
 
     full_data = {
@@ -164,6 +178,9 @@ def save_bilibili_video(
             "subtitle_source_type": subtitle_source_type,
             "subtitle_source_api": subtitle_source_api,
             "subtitle_note": subtitle_note,
+            "page_count": page_count,
+            "pages_with_subtitles": pages_with_subtitles,
+            "missing_subtitle_pages": missing_subtitle_pages,
         },
     }
 
@@ -191,4 +208,7 @@ def save_bilibili_video(
         subtitle_source_type=subtitle_source_type,
         subtitle_source_api=subtitle_source_api,
         subtitle_note=subtitle_note,
+        page_count=page_count,
+        pages_with_subtitles=pages_with_subtitles,
+        missing_subtitle_pages=missing_subtitle_pages,
     )

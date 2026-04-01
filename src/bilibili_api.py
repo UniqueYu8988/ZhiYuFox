@@ -142,6 +142,8 @@ def get_video_info(bvid: str) -> dict:
         "bvid": video["bvid"],
         "aid": video["aid"],
         "cid": video["cid"],
+        "tid": video.get("tid", 0),
+        "tname": video.get("tname", ""),
         "title": video["title"],
         "desc": video.get("desc", ""),
         "owner": {
@@ -227,6 +229,91 @@ def _select_preferred_subtitles(subtitles: list[dict]) -> list[dict]:
         return selected
 
     return subtitles[:1]
+
+
+def _build_page_descriptor(page: dict) -> dict:
+    page_no = int(page.get("page") or 1)
+    page_part = str(page.get("part") or "").strip() or f"P{page_no}"
+    return {
+        "page": page_no,
+        "part": page_part,
+        "label": f"P{page_no}：{page_part}",
+    }
+
+
+def _fetch_subtitles_for_cid(aid: int, cid: int) -> list[dict]:
+    player_data: dict | None = None
+    player_errors: list[str] = []
+    for api_name, api_url in [
+        ("字幕信息接口", config.API_PLAYER_WBI),
+        ("播放器字幕接口", config.API_PLAYER),
+    ]:
+        try:
+            data = _request_json(
+                api_url,
+                api_name,
+                params={"aid": aid, "cid": cid},
+            )
+            if data.get("code") == 0:
+                player_data = data.get("data", {})
+                break
+            player_errors.append(f"{api_name}: {data.get('message', '未知错误')}")
+        except Exception as exc:
+            player_errors.append(f"{api_name}: {exc}")
+
+    if player_data is None:
+        if player_errors:
+            _log(f"字幕接口请求失败，已跳过字幕：{player_errors[-1]}")
+        else:
+            _log("字幕接口请求失败，已跳过字幕")
+        return []
+
+    subtitle_info = player_data.get("subtitle") or {}
+    subtitle_list = subtitle_info.get("subtitles") or []
+    if not subtitle_list:
+        if player_data.get("need_login_subtitle"):
+            _log("该视频字幕需要登录后才能访问，请在客户端设置中填写 B站登录信息。")
+        else:
+            _log("该视频没有可抓取字幕")
+        return []
+
+    all_subtitles: list[dict] = []
+    for sub_meta in subtitle_list:
+        lang = sub_meta.get("lan_doc", sub_meta.get("lan", "未知"))
+        url = sub_meta.get("subtitle_url", "")
+        if not url:
+            continue
+        if url.startswith("//"):
+            url = "https:" + url
+
+        _log(f"下载字幕：{lang}")
+        try:
+            sub_data = _request_json(url, f"字幕下载接口({lang})", use_session=False)
+        except Exception as exc:
+            _log(f"下载字幕失败，已跳过 {lang}：{exc}")
+            continue
+
+        entries = [
+            {
+                "from": item.get("from", 0),
+                "to": item.get("to", 0),
+                "content": item.get("content", ""),
+            }
+            for item in sub_data.get("body", [])
+        ]
+        all_subtitles.append(
+            {
+                "lang": lang,
+                "lan": sub_meta.get("lan", ""),
+                "entries": entries,
+            }
+        )
+
+    if not all_subtitles:
+        _log("字幕接口可访问，但没有成功保存任何字幕，已跳过字幕")
+        return []
+
+    return _select_preferred_subtitles(all_subtitles)
 
 
 def _get_sub_replies(oid: int, root_rpid: int) -> list[dict]:
@@ -402,80 +489,89 @@ def get_all_comments(
 
 def get_subtitles(aid: int, cid: int) -> list[dict]:
     _log("正在获取字幕...")
-
-    player_data: dict | None = None
-    player_errors: list[str] = []
-    for api_name, api_url in [
-        ("字幕信息接口", config.API_PLAYER_WBI),
-        ("播放器字幕接口", config.API_PLAYER),
-    ]:
-        try:
-            data = _request_json(
-                api_url,
-                api_name,
-                params={"aid": aid, "cid": cid},
-            )
-            if data.get("code") == 0:
-                player_data = data.get("data", {})
-                break
-            player_errors.append(f"{api_name}: {data.get('message', '未知错误')}")
-        except Exception as exc:
-            player_errors.append(f"{api_name}: {exc}")
-
-    if player_data is None:
-        if player_errors:
-            _log(f"字幕接口请求失败，已跳过字幕：{player_errors[-1]}")
-        else:
-            _log("字幕接口请求失败，已跳过字幕")
+    selected_subtitles = _fetch_subtitles_for_cid(aid, cid)
+    if not selected_subtitles:
         return []
 
-    subtitle_info = player_data.get("subtitle") or {}
-    subtitle_list = subtitle_info.get("subtitles") or []
-    if not subtitle_list:
-        if player_data.get("need_login_subtitle"):
-            _log("该视频字幕需要登录后才能访问，请在客户端设置中填写 B站登录信息。")
-        else:
-            _log("该视频没有可抓取字幕")
-        return []
-
-    all_subtitles: list[dict] = []
-    for sub_meta in subtitle_list:
-        lang = sub_meta.get("lan_doc", sub_meta.get("lan", "未知"))
-        url = sub_meta.get("subtitle_url", "")
-        if not url:
-            continue
-        if url.startswith("//"):
-            url = "https:" + url
-
-        _log(f"下载字幕：{lang}")
-        try:
-            sub_data = _request_json(url, f"字幕下载接口({lang})", use_session=False)
-        except Exception as exc:
-            _log(f"下载字幕失败，已跳过 {lang}：{exc}")
-            continue
-
-        entries = [
-            {
-                "from": item.get("from", 0),
-                "to": item.get("to", 0),
-                "content": item.get("content", ""),
-            }
-            for item in sub_data.get("body", [])
-        ]
-        all_subtitles.append(
-            {
-                "lang": lang,
-                "lan": sub_meta.get("lan", ""),
-                "entries": entries,
-            }
-        )
-
-    if not all_subtitles:
-        _log("字幕接口可访问，但没有成功保存任何字幕，已跳过字幕")
-        return []
-
-    selected_subtitles = _select_preferred_subtitles(all_subtitles)
     total_entries = sum(len(item["entries"]) for item in selected_subtitles)
     selected_label = ", ".join(item["lang"] for item in selected_subtitles)
     _log(f"字幕获取完毕，已保留：{selected_label}，共 {total_entries} 条")
     return selected_subtitles
+
+
+def get_subtitles_bundle(video_info: dict) -> dict:
+    aid = int(video_info["aid"])
+    default_cid = int(video_info["cid"])
+    pages = video_info.get("pages") or [{"cid": default_cid, "part": video_info.get("title", ""), "page": 1}]
+
+    combined_tracks: dict[str, dict] = {}
+    pages_with_subtitles = 0
+    pages_without_subtitles: list[dict] = []
+
+    _log(f"正在获取字幕（默认合并全部分P，共 {len(pages)} 个）...")
+    for page in pages:
+        cid = int(page.get("cid") or 0)
+        if not cid:
+            continue
+
+        page_info = _build_page_descriptor(page)
+        page_no = page_info["page"]
+        page_part = page_info["part"]
+        page_label = page_info["label"]
+        _log(f"正在获取 {page_label} 的字幕...")
+        page_subtitles = _fetch_subtitles_for_cid(aid, cid)
+        if not page_subtitles:
+            pages_without_subtitles.append(page_info)
+            continue
+
+        pages_with_subtitles += 1
+        for subtitle in page_subtitles:
+            track_key = subtitle.get("lan") or subtitle.get("lang") or "unknown"
+            track = combined_tracks.setdefault(
+                track_key,
+                {
+                    "lang": subtitle.get("lang", "未知"),
+                    "lan": subtitle.get("lan", ""),
+                    "entries": [],
+                    "page_segments": [],
+                },
+            )
+            entries = subtitle.get("entries") or []
+            track["entries"].extend(entries)
+            track["page_segments"].append(
+                {
+                    "label": page_label,
+                    "entries": entries,
+                }
+            )
+
+    subtitles = list(combined_tracks.values())
+    if subtitles:
+        total_entries = sum(len(item.get("entries") or []) for item in subtitles)
+        selected_label = ", ".join(item.get("lang", "未知") for item in subtitles)
+        note = (
+            f"默认合并全部分P；成功获取 {pages_with_subtitles}/{len(pages)} 个分P 的字幕，"
+            f"共 {total_entries} 条，已保留语言：{selected_label}。"
+        )
+        _log(f"字幕获取完毕，{note}")
+        return {
+            "subtitles": subtitles,
+            "source_type": "已合并全部分P字幕",
+            "source_api": "get_subtitles_bundle",
+            "note": note,
+            "page_count": len(pages),
+            "pages_with_subtitles": pages_with_subtitles,
+            "pages_without_subtitles": pages_without_subtitles,
+        }
+
+    note = f"已尝试合并全部分P，但 {len(pages)} 个分P 都未获取到可用字幕。"
+    _log(note)
+    return {
+        "subtitles": [],
+        "source_type": "未获取到字幕",
+        "source_api": "get_subtitles_bundle",
+        "note": note,
+        "page_count": len(pages),
+        "pages_with_subtitles": 0,
+        "pages_without_subtitles": pages_without_subtitles or [_build_page_descriptor(page) for page in pages],
+    }

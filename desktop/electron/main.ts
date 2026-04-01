@@ -81,6 +81,9 @@ type RunResult = {
   hasSubtitles: boolean
   subtitleGroupCount: number
   subtitleEntryCount: number
+  pageCount: number
+  pagesWithSubtitles: number
+  missingSubtitlePages: string[]
   aiSkippedReason: string
   resultNote: string
 }
