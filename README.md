@@ -81,13 +81,3 @@ desktop/release/
 
 感谢朋友 Zhi 提供底层代码基础，让这个项目能够继续发展成现在的形态。
 
-## 关于 Contributors
-
-GitHub 的 `Contributors` 列表不能手动指定，它取决于实际进入仓库历史的 commit 记录。
-
-如果后续希望 ProfessorZhi 出现在该仓库的 `Contributors` 中，比较合适的方式是：
-
-- 邀请他参与协作并提交 commit
-- 或在后续合并带有他真实作者信息的提交
-
-在此之前，README 中的“致谢”会是更准确也更体面的表达方式。
