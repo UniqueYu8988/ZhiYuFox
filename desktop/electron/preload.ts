@@ -16,4 +16,9 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     ipcRenderer.on('archive-log', handler)
     return () => ipcRenderer.removeListener('archive-log', handler)
   },
+  onArchiveProgress: (callback: (payload: { message: string; percent: number }) => void) => {
+    const handler = (_event: unknown, payload: { message: string; percent: number }) => callback(payload)
+    ipcRenderer.on('archive-progress', handler)
+    return () => ipcRenderer.removeListener('archive-progress', handler)
+  },
 })

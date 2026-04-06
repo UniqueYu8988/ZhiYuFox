@@ -5,6 +5,8 @@ type RuntimeSettings = {
   output_dir: string
   minimax_api_key: string
   minimax_model: string
+  groq_api_key: string
+  groq_transcription_model: string
 }
 
 type ArchiveRunResult = {
@@ -16,6 +18,8 @@ type ArchiveRunResult = {
   hasSubtitles: boolean
   subtitleGroupCount: number
   subtitleEntryCount: number
+  textSourceType: string
+  textSourceNote: string
   pageCount: number
   pagesWithSubtitles: number
   missingSubtitlePages: string[]
@@ -37,6 +41,12 @@ type SettingsStatus = {
     model: string
     message: string
   }
+  groq: {
+    configured: boolean
+    valid: boolean
+    model: string
+    message: string
+  }
 }
 
 interface Window {
@@ -52,5 +62,6 @@ interface Window {
     showItem: (targetPath: string) => Promise<void>
     openExternal: (targetUrl: string) => Promise<void>
     onArchiveLog: (callback: (message: string) => void) => () => void
+    onArchiveProgress: (callback: (payload: { message: string; percent: number }) => void) => () => void
   }
 }

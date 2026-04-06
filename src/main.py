@@ -46,11 +46,26 @@ def main() -> int:
 
     from app_service import SaveOptions, save_bilibili_video
 
+    def emit_progress(message: str, percent: int) -> None:
+        print(
+            "__BILIARCHIVE_PROGRESS__="
+            + json.dumps(
+                {
+                    "message": message,
+                    "percent": percent,
+                },
+                ensure_ascii=False,
+            ),
+            flush=True,
+        )
+        print(message, flush=True)
+
     result = save_bilibili_video(
         args.video,
         options=SaveOptions(
             generate_summary=not args.no_ai,
         ),
+        progress_callback=emit_progress,
     )
 
     print("=" * 60)
@@ -71,6 +86,8 @@ def main() -> int:
                     "hasSubtitles": result.has_subtitles,
                     "subtitleGroupCount": result.subtitle_group_count,
                     "subtitleEntryCount": result.subtitle_entry_count,
+                    "textSourceType": result.text_source_type,
+                    "textSourceNote": result.text_source_note,
                     "pageCount": result.page_count,
                     "pagesWithSubtitles": result.pages_with_subtitles,
                     "missingSubtitlePages": result.missing_subtitle_pages,

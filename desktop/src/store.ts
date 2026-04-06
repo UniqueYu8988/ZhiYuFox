@@ -5,6 +5,8 @@ type RuntimeSettings = {
   output_dir: string
   minimax_api_key: string
   minimax_model: string
+  groq_api_key: string
+  groq_transcription_model: string
 }
 
 type RunResult = {
@@ -16,6 +18,8 @@ type RunResult = {
   hasSubtitles: boolean
   subtitleGroupCount: number
   subtitleEntryCount: number
+  textSourceType: string
+  textSourceNote: string
   pageCount: number
   pagesWithSubtitles: number
   missingSubtitlePages: string[]
@@ -37,6 +41,12 @@ type SettingsStatus = {
     model: string
     message: string
   }
+  groq: {
+    configured: boolean
+    valid: boolean
+    model: string
+    message: string
+  }
 }
 
 type AppState = {
@@ -44,6 +54,8 @@ type AppState = {
   generateAi: boolean
   logs: string[]
   status: string
+  progressPercent: number
+  progressLabel: string
   running: boolean
   settingsOpen: boolean
   settingsLoaded: boolean
@@ -59,6 +71,7 @@ type AppState = {
   appendLog: (value: string) => void
   clearLogs: () => void
   setStatus: (value: string) => void
+  setProgress: (percent: number, label: string) => void
   setRunning: (value: boolean) => void
   setResult: (value: RunResult | null) => void
 }
@@ -68,6 +81,8 @@ export const useAppStore = create<AppState>((set) => ({
   generateAi: true,
   logs: [],
   status: '等待输入',
+  progressPercent: 0,
+  progressLabel: '等待输入',
   running: false,
   settingsOpen: false,
   settingsLoaded: false,
@@ -76,6 +91,8 @@ export const useAppStore = create<AppState>((set) => ({
     output_dir: '',
     minimax_api_key: '',
     minimax_model: 'MiniMax-M2.7',
+    groq_api_key: '',
+    groq_transcription_model: 'whisper-large-v3-turbo',
   },
   settingsStatus: {
     bilibili: {
@@ -91,6 +108,12 @@ export const useAppStore = create<AppState>((set) => ({
       model: 'MiniMax-M2.7',
       message: '未配置 API Key',
     },
+    groq: {
+      configured: false,
+      valid: false,
+      model: 'whisper-large-v3-turbo',
+      message: '未配置 Groq API Key',
+    },
   },
   result: null,
   setVideoInput: (value) => set({ videoInput: value }),
@@ -105,6 +128,7 @@ export const useAppStore = create<AppState>((set) => ({
     })),
   clearLogs: () => set({ logs: [] }),
   setStatus: (value) => set({ status: value }),
+  setProgress: (percent, label) => set({ progressPercent: percent, progressLabel: label }),
   setRunning: (value) => set({ running: value }),
   setResult: (value) => set({ result: value }),
 }))

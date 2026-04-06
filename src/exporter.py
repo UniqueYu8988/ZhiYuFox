@@ -49,6 +49,15 @@ def _extract_tags_and_body(summary: str) -> tuple[list[str], str]:
     return tags, body
 
 
+def _format_yaml_tag(tag: str) -> str:
+    clean = (tag or "").strip()
+    if not clean:
+        return ""
+    if any(char in clean for char in [":", "[", "]", "{", "}", ",", "#", '"', "'"]):
+        return json.dumps(clean, ensure_ascii=False)
+    return clean
+
+
 def export_markdown(data: dict, filepath: str) -> None:
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
@@ -61,22 +70,30 @@ def export_markdown(data: dict, filepath: str) -> None:
     lines.append(f"title: {json.dumps(video['title'], ensure_ascii=False)}")
     lines.append(f"date: {time.strftime('%Y-%m-%d', time.localtime(video['pubdate']))}")
     if tags:
-        lines.append(f"tags: [{', '.join(json.dumps(tag, ensure_ascii=False) for tag in tags)}]")
+        formatted_tags = [_format_yaml_tag(tag) for tag in tags if _format_yaml_tag(tag)]
+        lines.append(f"tags: [{', '.join(formatted_tags)}]" if formatted_tags else "tags: []")
     else:
         lines.append("tags: []")
     lines.append("---")
     lines.append("")
 
     meta = data.get("meta") or {}
+    text_source_type = str(meta.get("text_source_type") or meta.get("subtitle_source_type") or "").strip()
+    text_source_note = str(meta.get("text_source_note") or meta.get("subtitle_note") or "").strip()
     missing_pages = meta.get("missing_subtitle_pages") or []
-    if missing_pages:
-        lines.append("> [!note] 字幕说明")
-        lines.append(
-            f"> 本次仅获取到 {meta.get('pages_with_subtitles', 0)}/{meta.get('page_count', len(missing_pages))} 个分P的字幕。"
-        )
-        lines.append("> 未参与总结的分P：")
-        for label in missing_pages:
-            lines.append(f"> - {label}")
+    show_text_note = bool(missing_pages)
+    if show_text_note and (text_source_type or missing_pages):
+        lines.append("> [!note] 文本说明")
+        if text_source_type:
+            lines.append(f"> 文本来源：{text_source_type}")
+        if text_source_note:
+            lines.append(f"> {text_source_note}")
+        if missing_pages:
+            lines.append(
+                f"> 本次仍有 {len(missing_pages)} 个分P未参与总结："
+            )
+            for label in missing_pages:
+                lines.append(f"> - {label}")
         lines.append("")
 
     lines.append(body or "🪄 未生成内容摘要。若要启用，请先配置 MiniMax API Key。")

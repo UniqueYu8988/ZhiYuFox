@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 
 import bilibili_api
 import config
+import groq_client
 import minimax_client
 from app_service import SaveOptions, SaveResult, save_bilibili_video
 
@@ -102,9 +103,17 @@ class SettingsDialog(QDialog):
 
         self.sessdata_status_label = QLabel("尚未检测")
         self.api_status_label = QLabel("尚未检测")
-        for label in (self.sessdata_status_label, self.api_status_label):
+        self.groq_status_label = QLabel("尚未检测")
+        for label in (self.sessdata_status_label, self.api_status_label, self.groq_status_label):
             label.setWordWrap(True)
             label.setStyleSheet("color: #5f6b7a;")
+
+        self.groq_api_key_input = QLineEdit(settings.get("groq_api_key", ""))
+        self.groq_api_key_input.setPlaceholderText("无字幕时启用音频转写兜底")
+        self.groq_api_key_input.setEchoMode(QLineEdit.PasswordEchoOnEdit)
+
+        self.groq_model_input = QLineEdit(settings.get("groq_transcription_model", "whisper-large-v3-turbo"))
+        self.groq_model_input.setPlaceholderText("例如：whisper-large-v3-turbo")
 
         form.addRow("SESSDATA", self.sessdata_input)
         form.addRow("SESSDATA 检测", self.sessdata_status_label)
@@ -112,6 +121,9 @@ class SettingsDialog(QDialog):
         form.addRow("MiniMax API Key", self.api_key_input)
         form.addRow("API 检测", self.api_status_label)
         form.addRow("MiniMax 模型", self.model_input)
+        form.addRow("Groq API Key", self.groq_api_key_input)
+        form.addRow("Groq 检测", self.groq_status_label)
+        form.addRow("Groq 转写模型", self.groq_model_input)
         layout.addLayout(form)
 
         detect_row = QHBoxLayout()
@@ -124,8 +136,9 @@ class SettingsDialog(QDialog):
         help_text = QLabel(
             "说明：\n"
             "1. 登录只保留 SESSDATA 一种方式。\n"
-            "2. SESSDATA 和 API Key 只保存在本地 .biliarchive.local.json，不会写进源码。\n"
-            "3. 该本地文件默认已被 .gitignore 忽略。"
+            "2. MiniMax 用于生成总结，Groq 用于无字幕时的音频转写兜底。\n"
+            "3. SESSDATA 和 API Key 只保存在本地 .biliarchive.local.json，不会写进源码。\n"
+            "4. 该本地文件默认已被 .gitignore 忽略。"
         )
         help_text.setWordWrap(True)
         help_text.setStyleSheet("color: #5f6b7a;")
@@ -149,23 +162,30 @@ class SettingsDialog(QDialog):
         sessdata = self.sessdata_input.text().strip()
         api_key = self.api_key_input.text().strip()
         model = self.model_input.text().strip() or "MiniMax-M2.7"
+        groq_api_key = self.groq_api_key_input.text().strip()
+        groq_model = self.groq_model_input.text().strip() or "whisper-large-v3-turbo"
 
         sess_ok, sess_message = bilibili_api.validate_sessdata(sessdata)
         api_ok, api_message = minimax_client.validate_api_key(api_key, model)
+        groq_ok, groq_message = groq_client.validate_api_key(groq_api_key, groq_model)
 
         self.sessdata_status_label.setText(sess_message)
         self.sessdata_status_label.setStyleSheet(f"color: {'#1f7a1f' if sess_ok else '#c0392b'};")
         self.api_status_label.setText(api_message)
         self.api_status_label.setStyleSheet(f"color: {'#1f7a1f' if api_ok else '#c0392b'};")
-        return sess_ok, api_ok
+        self.groq_status_label.setText(groq_message)
+        self.groq_status_label.setStyleSheet(f"color: {'#1f7a1f' if groq_ok else '#c0392b'};")
+        return sess_ok, api_ok, groq_ok
 
     def accept(self) -> None:
         output_dir = self.output_input.text().strip() or config.DEFAULT_OUTPUT_DIR
         sessdata = self.sessdata_input.text().strip()
         api_key = self.api_key_input.text().strip()
         model = self.model_input.text().strip() or "MiniMax-M2.7"
+        groq_api_key = self.groq_api_key_input.text().strip()
+        groq_model = self.groq_model_input.text().strip() or "whisper-large-v3-turbo"
 
-        sess_ok, api_ok = self.run_validation()
+        sess_ok, api_ok, groq_ok = self.run_validation()
 
         if sessdata and not sess_ok:
             QMessageBox.warning(self, "登录信息无效", "SESSDATA 检测未通过，请检查后再保存。")
@@ -173,8 +193,11 @@ class SettingsDialog(QDialog):
         if not api_ok:
             QMessageBox.warning(self, "API 设置无效", "MiniMax API Key 或模型检测未通过，请检查后再保存。")
             return
+        if not groq_ok:
+            QMessageBox.warning(self, "Groq 设置无效", "Groq API Key 或模型检测未通过，请检查后再保存。")
+            return
 
-        config.save_runtime_settings(sessdata, output_dir, api_key, model)
+        config.save_runtime_settings(sessdata, output_dir, api_key, model, groq_api_key, groq_model)
         super().accept()
 
 
@@ -318,7 +341,7 @@ class MainWindow(QMainWindow):
         settings = config.get_runtime_settings()
         login_state = _resolve_login_state_text(settings)
         self.hint.setText(
-            f"当前会输出精简 Markdown，只保留标题、日期和 AI 总结。输出目录：{settings['output_dir']}；B站状态：{login_state}。"
+            f"当前会输出精简 Markdown，只保留标题、日期和 AI 总结。输出目录：{settings['output_dir']}；B站状态：{login_state}；无字幕时可通过 Groq 音频转写兜底。"
         )
 
     def open_settings(self) -> None:

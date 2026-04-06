@@ -54,6 +54,12 @@ SESSDATA = os.getenv("BILIBILI_SESSDATA", _LOCAL_SETTINGS.get("sessdata", ""))
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", _LOCAL_SETTINGS.get("minimax_api_key", ""))
 MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimaxi.com/v1")
 MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", _LOCAL_SETTINGS.get("minimax_model", "MiniMax-M2.7"))
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", _LOCAL_SETTINGS.get("groq_api_key", ""))
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_TRANSCRIPTION_MODEL = os.getenv(
+    "GROQ_TRANSCRIPTION_MODEL",
+    _LOCAL_SETTINGS.get("groq_transcription_model", "whisper-large-v3-turbo"),
+)
 
 BASE_HEADERS = {
     "User-Agent": (
@@ -121,6 +127,8 @@ def get_runtime_settings() -> dict[str, str]:
         "output_dir": OUTPUT_DIR,
         "minimax_api_key": MINIMAX_API_KEY,
         "minimax_model": MINIMAX_MODEL,
+        "groq_api_key": GROQ_API_KEY,
+        "groq_transcription_model": GROQ_TRANSCRIPTION_MODEL,
     }
 
 
@@ -129,19 +137,29 @@ def save_runtime_settings(
     output_dir: str,
     minimax_api_key: str | None = None,
     minimax_model: str | None = None,
+    groq_api_key: str | None = None,
+    groq_transcription_model: str | None = None,
 ) -> None:
-    global SESSDATA, OUTPUT_DIR, MINIMAX_API_KEY, MINIMAX_MODEL, _LOCAL_SETTINGS
+    global SESSDATA, OUTPUT_DIR, MINIMAX_API_KEY, MINIMAX_MODEL, GROQ_API_KEY, GROQ_TRANSCRIPTION_MODEL, _LOCAL_SETTINGS
 
     SESSDATA = (sessdata or "").strip()
     OUTPUT_DIR = os.path.abspath((output_dir or DEFAULT_OUTPUT_DIR).strip())
     MINIMAX_API_KEY = (MINIMAX_API_KEY if minimax_api_key is None else minimax_api_key.strip())
     MINIMAX_MODEL = (MINIMAX_MODEL if minimax_model is None else (minimax_model.strip() or "MiniMax-M2.7"))
+    GROQ_API_KEY = (GROQ_API_KEY if groq_api_key is None else groq_api_key.strip())
+    GROQ_TRANSCRIPTION_MODEL = (
+        GROQ_TRANSCRIPTION_MODEL
+        if groq_transcription_model is None
+        else (groq_transcription_model.strip() or "whisper-large-v3-turbo")
+    )
 
     _LOCAL_SETTINGS = {
         "sessdata": SESSDATA,
         "output_dir": OUTPUT_DIR,
         "minimax_api_key": MINIMAX_API_KEY,
         "minimax_model": MINIMAX_MODEL,
+        "groq_api_key": GROQ_API_KEY,
+        "groq_transcription_model": GROQ_TRANSCRIPTION_MODEL,
     }
     _save_local_settings(_LOCAL_SETTINGS)
     _sync_headers()
@@ -153,6 +171,14 @@ def save_minimax_settings(api_key: str, model: str) -> None:
 
 def get_minimax_settings() -> tuple[str, str]:
     return MINIMAX_API_KEY, MINIMAX_MODEL
+
+
+def save_groq_settings(api_key: str, model: str) -> None:
+    save_runtime_settings(SESSDATA, OUTPUT_DIR, MINIMAX_API_KEY, MINIMAX_MODEL, api_key, model)
+
+
+def get_groq_settings() -> tuple[str, str]:
+    return GROQ_API_KEY, GROQ_TRANSCRIPTION_MODEL
 
 
 _sync_headers()

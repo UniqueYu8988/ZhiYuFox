@@ -70,6 +70,8 @@ type RuntimeSettings = {
   output_dir: string
   minimax_api_key: string
   minimax_model: string
+  groq_api_key: string
+  groq_transcription_model: string
 }
 
 type RunResult = {
@@ -81,6 +83,8 @@ type RunResult = {
   hasSubtitles: boolean
   subtitleGroupCount: number
   subtitleEntryCount: number
+  textSourceType: string
+  textSourceNote: string
   pageCount: number
   pagesWithSubtitles: number
   missingSubtitlePages: string[]
@@ -97,6 +101,12 @@ type SettingsStatus = {
     message: string
   }
   minimax: {
+    configured: boolean
+    valid: boolean
+    model: string
+    message: string
+  }
+  groq: {
     configured: boolean
     valid: boolean
     model: string
@@ -137,6 +147,8 @@ function defaultSettings(): RuntimeSettings {
     output_dir: path.join(dataRoot, 'output'),
     minimax_api_key: '',
     minimax_model: 'MiniMax-M2.7',
+    groq_api_key: '',
+    groq_transcription_model: 'whisper-large-v3-turbo',
   }
 }
 
@@ -149,6 +161,8 @@ function loadSettings(): RuntimeSettings {
       output_dir: String(raw.output_dir ?? path.join(dataRoot, 'output')),
       minimax_api_key: String(raw.minimax_api_key ?? ''),
       minimax_model: String(raw.minimax_model ?? 'MiniMax-M2.7'),
+      groq_api_key: String(raw.groq_api_key ?? ''),
+      groq_transcription_model: String(raw.groq_transcription_model ?? 'whisper-large-v3-turbo'),
     }
   } catch {
     return defaultSettings()
@@ -172,6 +186,10 @@ function appendRuntimeLog(message: string) {
 function emitArchiveLog(message: string) {
   appendRuntimeLog(message)
   mainWindow?.webContents.send('archive-log', message.endsWith('\n') ? message : `${message}\n`)
+}
+
+function emitArchiveProgress(payload: { message: string; percent: number }) {
+  mainWindow?.webContents.send('archive-progress', payload)
 }
 
 function findExecutableOnPath(names: string[]) {
@@ -295,7 +313,40 @@ async function fetchSettingsStatus(settings: RuntimeSettings = loadSettings()): 
     }
   }
 
-  return { bilibili, minimax }
+  const groq = {
+    configured: Boolean(settings.groq_api_key.trim()),
+    valid: false,
+    model: settings.groq_transcription_model || 'whisper-large-v3-turbo',
+    message: '未配置 Groq API Key',
+  }
+
+  if (groq.configured) {
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/models', {
+        headers: {
+          Authorization: `Bearer ${settings.groq_api_key.trim()}`,
+        },
+      })
+
+      if (response.ok) {
+        const payload = await response.json()
+        const models = Array.isArray(payload?.data) ? payload.data : []
+        const modelIds = new Set(models.map((item: { id?: string }) => String(item?.id ?? '')))
+        groq.valid = modelIds.size === 0 || modelIds.has(groq.model)
+        groq.message = groq.valid ? `已配置 ${groq.model}` : `模型不可用：${groq.model}`
+      } else if (response.status === 401) {
+        groq.message = 'API Key 无效'
+      } else if (response.status === 403) {
+        groq.message = 'API Key 无权限'
+      } else {
+        groq.message = `校验失败 · HTTP ${response.status}`
+      }
+    } catch {
+      groq.message = 'API 检测失败'
+    }
+  }
+
+  return { bilibili, minimax, groq }
 }
 
 function createWindow() {
@@ -359,16 +410,41 @@ function runPythonArchive(video: string, generateAi: boolean): Promise<RunResult
         BILIARCHIVE_SETTINGS_PATH: settingsPath,
         PYTHONIOENCODING: 'utf-8',
         PYTHONUTF8: '1',
+        PYTHONUNBUFFERED: '1',
       },
     })
 
     let stdout = ''
     let stderr = ''
+    let stdoutBuffer = ''
 
     child.stdout.on('data', (chunk) => {
       const text = chunk.toString()
       stdout += text
-      mainWindow?.webContents.send('archive-log', text)
+      stdoutBuffer += text
+      const lines = stdoutBuffer.split(/\r?\n/)
+      stdoutBuffer = lines.pop() ?? ''
+      const visibleLines: string[] = []
+      for (const line of lines) {
+        if (!line.trim()) continue
+        const match = line.match(/^__BILIARCHIVE_PROGRESS__=(\{.*\})$/)
+        if (match) {
+          try {
+            const payload = JSON.parse(match[1])
+            emitArchiveProgress({
+              message: String(payload?.message ?? ''),
+              percent: Number(payload?.percent ?? 0),
+            })
+          } catch {
+            // ignore malformed progress payload
+          }
+          continue
+        }
+        visibleLines.push(line)
+      }
+      if (visibleLines.length) {
+        mainWindow?.webContents.send('archive-log', `${visibleLines.join('\n')}\n`)
+      }
     })
 
     child.stderr.on('data', (chunk) => {
@@ -383,6 +459,10 @@ function runPythonArchive(video: string, generateAi: boolean): Promise<RunResult
     })
 
     child.on('close', (code) => {
+      if (stdoutBuffer.trim()) {
+        mainWindow?.webContents.send('archive-log', `${stdoutBuffer.trim()}\n`)
+        stdoutBuffer = ''
+      }
       if (code !== 0) {
         const message = stderr || stdout || `Python process exited with code ${code}`
         emitArchiveLog(`归档失败：${message}`)
