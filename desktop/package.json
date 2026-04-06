@@ -34,7 +34,9 @@
   "overrides": {
     "cacache": {
       "glob": "^10.5.0"
-    }
+    },
+    "lodash": "^4.18.0",
+    "@xmldom/xmldom": "^0.9.9"
   },
   "build": {
     "appId": "com.yu.zhiyuli",
